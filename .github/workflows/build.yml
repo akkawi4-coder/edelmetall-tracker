@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,3 +43,12 @@ jobs:
         with:
           name: EdelmetallTracker-APK
           path: EdelmetallTracker.apk
+
+      - name: Download-Seite aktualisieren (Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: Edelmetall Tracker 0.1 (Build ${{ github.run_number }})
+          body: "APK zum Installieren: unten unter Assets auf EdelmetallTracker.apk tippen."
+          files: EdelmetallTracker.apk
+          make_latest: true
