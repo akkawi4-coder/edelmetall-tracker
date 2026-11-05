@@ -1,0 +1,17 @@
+Lauf: 2026-11-05T20:52:35+00:00
+Lade EUR/USD-Referenzkurse der EZB …
+  7130 Wechselkurse
+  Gold-Monatswerte: 2326
+  XAU Stooq: 0 Werte
+  XAU Yahoo: 6572 Werte, 2000-08-30 bis 2026-11-05
+  XAU: 2384 Punkte in EUR
+  XAG Stooq: 0 Werte
+  XAG Yahoo: 6573 Werte, 2000-08-30 bis 2026-11-05
+  XAG: 2363 Punkte in EUR
+  XPT Stooq: 0 Werte
+  XPT Yahoo: 6305 Werte, 1999-01-04 bis 2026-11-05
+  XPT: 2327 Punkte in EUR
+  XPD Stooq: 0 Werte
+  XPD Yahoo: 6544 Werte, 1999-01-04 bis 2026-11-05
+  XPD: 2375 Punkte in EUR
+Geschrieben: app/src/main/assets/history.json (9449 Werte)
