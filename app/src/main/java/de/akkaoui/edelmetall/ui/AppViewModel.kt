@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.akkaoui.edelmetall.data.Holding
+import de.akkaoui.edelmetall.data.Product
 import de.akkaoui.edelmetall.data.Repository
 import de.akkaoui.edelmetall.data.Settings
 import de.akkaoui.edelmetall.security.BackupCrypto
@@ -25,6 +26,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val recorded = repo.recorded
     val holdings = repo.holdings
     val settings = repo.settings
+    val portfolios = repo.portfolios
+    val customProducts = repo.customProducts
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
@@ -51,6 +54,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveHolding(h: Holding) = repo.upsertHolding(h)
 
     fun deleteHolding(id: String) = repo.deleteHolding(id)
+
+    fun addPortfolio(name: String): String = repo.addPortfolio(name)
+
+    fun renamePortfolio(id: String, name: String) = repo.renamePortfolio(id, name)
+
+    fun deletePortfolio(id: String) = repo.deletePortfolio(id)
+
+    fun saveCustomProduct(p: Product) = repo.upsertCustomProduct(p)
+
+    fun deleteCustomProduct(id: String) = repo.deleteCustomProduct(id)
+
+    /** Foto einlesen (im Hintergrund), Ergebnis = Dateiname oder null. */
+    fun importPhoto(uri: Uri, onDone: (String?) -> Unit) {
+        viewModelScope.launch {
+            val name = withContext(Dispatchers.IO) { repo.importPhoto(uri) }
+            if (name == null) toast("Foto konnte nicht geladen werden")
+            onDone(name)
+        }
+    }
 
     fun updateSettings(change: (Settings) -> Settings) = repo.updateSettings(change)
 

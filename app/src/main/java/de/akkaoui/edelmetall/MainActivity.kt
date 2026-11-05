@@ -4,6 +4,9 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
 import android.widget.Toast
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.ColorDrawable
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -11,6 +14,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +29,7 @@ import de.akkaoui.edelmetall.ui.AppRoot
 import de.akkaoui.edelmetall.ui.AppViewModel
 import de.akkaoui.edelmetall.ui.LockScreen
 import de.akkaoui.edelmetall.ui.theme.EdelmetallTheme
+import de.akkaoui.edelmetall.ui.theme.isDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -55,8 +60,16 @@ class MainActivity : FragmentActivity() {
         }
 
         setContent {
-            EdelmetallTheme {
-                val settings by vm.settings.collectAsState()
+            val settings by vm.settings.collectAsState()
+            val dark = isDark(settings.themeMode)
+            DisposableEffect(dark) {
+                val bars = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+                else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+                window.setBackgroundDrawable(ColorDrawable(if (dark) 0xFF0F1115.toInt() else 0xFFF6F5F2.toInt()))
+                onDispose { }
+            }
+            EdelmetallTheme(dark) {
                 val locked = settings.lockEnabled && !unlocked
                 if (locked) {
                     LockScreen(onUnlock = { authenticate() })

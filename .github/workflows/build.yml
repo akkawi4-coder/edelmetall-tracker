@@ -4,9 +4,16 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+  schedule:
+    # Montags früh: Kurshistorie aktualisieren und neue APK bauen
+    - cron: "17 3 * * 1"
 
 permissions:
   contents: write
+
+concurrency:
+  group: apk-build
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -23,18 +30,44 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Kurshistorie laden (optional, braucht Secret GOLDAPI_KEY)
+      - name: Kurshistorie laden (frei, ohne Schlüssel)
         continue-on-error: true
         env:
           GOLDAPI_KEY: ${{ secrets.GOLDAPI_KEY }}
-        run: python3 scripts/fetch_history.py app/src/main/assets/history.json
+        run: python3 -I scripts/fetch_history.py app/src/main/assets/history.json data/history-log.txt
+
+      - name: Kurshistorie im Repository sichern
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/assets/history.json data/history-log.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Kurshistorie aktualisiert [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - uses: gradle/actions/setup-gradle@v4
 
       - name: APK bauen
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Fehlerprotokoll sichern
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/ci && cp build.log /tmp/ci/build.log 2>/dev/null || echo "kein build.log" > /tmp/ci/build.log
+          git checkout --orphan ci-logs
+          git rm -rf --cached . > /dev/null
+          cp /tmp/ci/build.log build.log
+          grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -200 > fehler.txt || true
+          git add build.log fehler.txt
+          git commit -m "Build-Fehler ${GITHUB_RUN_NUMBER}"
+          git push -f origin ci-logs
 
       - name: APK umbenennen
         run: cp app/build/outputs/apk/debug/app-debug.apk EdelmetallTracker.apk
@@ -47,8 +80,11 @@ jobs:
       - name: Download-Seite aktualisieren (Releases)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.${{ github.run_number }}
-          name: Edelmetall Tracker 0.1 (Build ${{ github.run_number }})
-          body: "APK zum Installieren: unten unter Assets auf EdelmetallTracker.apk tippen."
+          tag_name: v0.2.${{ github.run_number }}
+          name: Edelmetall Tracker 0.2 (Build ${{ github.run_number }})
+          body: |
+            APK zum Installieren: unten unter Assets auf EdelmetallTracker.apk tippen.
+            Neu in 0.2: mehrere Portfolios, eigene Produkte mit Foto, detaillierte Produktbilder,
+            neues Logo, Hell-/Dunkel-Design, Kurshistorie ab Euro-Einführung.
           files: EdelmetallTracker.apk
           make_latest: true

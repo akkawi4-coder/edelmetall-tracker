@@ -32,46 +32,9 @@ import de.akkaoui.edelmetall.data.PricePoint
 import de.akkaoui.edelmetall.data.ProductForm
 import kotlin.math.abs
 
-/** Gezeichnetes Produktsymbol (Barren oder Münze) in der Metallfarbe – keine fremden Produktfotos. */
+/** Einfaches Produktsymbol ohne Detaildaten. */
 @Composable
-fun ProductIcon(metal: Metal, form: ProductForm, size: Dp = 40.dp) {
-    val base = Color(metal.color)
-    val light = lerp(base, Color.White, 0.45f)
-    val dark = lerp(base, Color.Black, 0.35f)
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        if (form == ProductForm.COIN) {
-            val c = Offset(w / 2, h / 2)
-            drawCircle(Brush.linearGradient(listOf(light, base, dark), Offset(0f, 0f), Offset(w, h)), w * 0.46f, c)
-            drawCircle(dark, w * 0.46f, c, style = Stroke(w * 0.05f))
-            drawCircle(dark.copy(alpha = 0.55f), w * 0.33f, c, style = Stroke(w * 0.025f))
-        } else {
-            val body = Path().apply {
-                moveTo(w * 0.06f, h * 0.78f)
-                lineTo(w * 0.20f, h * 0.34f)
-                lineTo(w * 0.80f, h * 0.34f)
-                lineTo(w * 0.94f, h * 0.78f)
-                close()
-            }
-            drawPath(body, Brush.verticalGradient(listOf(base, dark), startY = h * 0.34f, endY = h * 0.78f))
-            val top = Path().apply {
-                moveTo(w * 0.20f, h * 0.34f)
-                lineTo(w * 0.26f, h * 0.22f)
-                lineTo(w * 0.74f, h * 0.22f)
-                lineTo(w * 0.80f, h * 0.34f)
-                close()
-            }
-            drawPath(top, light)
-            drawRoundRect(
-                color = light.copy(alpha = 0.35f),
-                topLeft = Offset(w * 0.32f, h * 0.46f),
-                size = Size(w * 0.36f, h * 0.18f),
-                cornerRadius = CornerRadius(w * 0.03f)
-            )
-        }
-    }
-}
+fun ProductIcon(metal: Metal, form: ProductForm, size: Dp = 40.dp) = ProductImage(metal, form, size)
 
 private fun downsample(points: List<PricePoint>, max: Int): List<PricePoint> {
     if (points.size <= max) return points
@@ -99,7 +62,7 @@ fun PriceChart(
     if (pts.size < 2) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
-                "Für diesen Zeitraum liegen noch keine Kursdaten vor.\nDie App zeichnet die Kurse ab jetzt automatisch auf.",
+                "Für diesen Zeitraum liegen noch keine Kursdaten vor.\nKurze Zeiträume füllen sich automatisch, solange die App läuft.",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

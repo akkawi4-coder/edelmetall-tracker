@@ -13,9 +13,11 @@ object ProductCatalog {
 
     fun byId(id: String?): Product? = if (id == null) null else all.firstOrNull { it.id == id }
 
-    fun search(query: String, metal: Metal?): List<Product> {
+    fun search(query: String, metal: Metal?): List<Product> = filter(all, query, metal)
+
+    fun filter(list: List<Product>, query: String, metal: Metal?): List<Product> {
         val tokens = query.lowercase(Locale.GERMANY).split(" ").filter { it.isNotBlank() }
-        return all.filter { p ->
+        return list.filter { p ->
             if (metal != null && p.metal != metal) return@filter false
             if (tokens.isEmpty()) return@filter true
             val hay = "${p.name} ${p.manufacturer} ${p.metal.label} ${p.form.label}".lowercase(Locale.GERMANY)

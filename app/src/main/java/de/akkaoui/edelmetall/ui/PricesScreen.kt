@@ -40,6 +40,7 @@ import de.akkaoui.edelmetall.data.PricePoint
 import de.akkaoui.edelmetall.ui.components.PriceChart
 import de.akkaoui.edelmetall.ui.theme.Gain
 import de.akkaoui.edelmetall.ui.theme.Loss
+import de.akkaoui.edelmetall.ui.theme.metalColor
 import de.akkaoui.edelmetall.util.Fmt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,7 +60,7 @@ fun PricesScreen(vm: AppViewModel) {
     val current = quote?.pricePerOz ?: points.lastOrNull()?.p
     val base = points.firstOrNull()?.p
     val shown = selected?.p ?: current
-    val color = Color(metal.color)
+    val color = metalColor(metal)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -164,7 +165,7 @@ fun PricesScreen(vm: AppViewModel) {
                 )
             ) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("●", color = Color(m.color))
+                    Text("●", color = metalColor(m))
                     Spacer(Modifier.width(10.dp))
                     Text(m.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     Column(horizontalAlignment = Alignment.End) {

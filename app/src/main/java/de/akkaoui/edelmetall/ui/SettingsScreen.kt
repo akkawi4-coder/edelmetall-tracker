@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import de.akkaoui.edelmetall.BuildConfig
+import de.akkaoui.edelmetall.data.ThemeMode
 import de.akkaoui.edelmetall.data.ValueMode
 import de.akkaoui.edelmetall.util.Fmt
 import java.time.LocalDate
@@ -68,6 +69,23 @@ fun SettingsScreen(vm: AppViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Section("Design") {
+            Text(
+                "Hell, dunkel oder automatisch wie am Handy eingestellt.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeMode.entries.forEach { m ->
+                    FilterChip(
+                        selected = settings.themeMode == m,
+                        onClick = { vm.updateSettings { it.copy(themeMode = m) } },
+                        label = { Text(m.label) }
+                    )
+                }
+            }
+        }
+
         Section("Sicherheit") {
             SwitchRow(
                 title = "Mit Displaysperre schützen",
@@ -125,7 +143,7 @@ fun SettingsScreen(vm: AppViewModel) {
         Section("Datenschutz & Info") {
             Text(
                 "• Kein Konto, keine Anmeldung, keine Werbung, keine Tracker.\n" +
-                    "• Portfolio und Einstellungen werden verschlüsselt nur auf diesem Gerät gespeichert.\n" +
+                    "• Portfolios, eigene Produkte und Einstellungen werden verschlüsselt nur auf diesem Gerät gespeichert. Eigene Fotos liegen im privaten App-Speicher.\n" +
                     "• Die App lädt ausschließlich öffentliche Kurse von gold-api.com. Dabei werden keine persönlichen Daten übertragen.\n" +
                     "• Keine Anlage- oder Steuerberatung. Die Haltefrist-Anzeige ist ein Hinweis nach § 23 EStG für Privatpersonen in Deutschland.",
                 style = MaterialTheme.typography.bodySmall,

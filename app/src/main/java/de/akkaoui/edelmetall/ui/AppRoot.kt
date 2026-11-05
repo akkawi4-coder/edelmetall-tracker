@@ -1,5 +1,6 @@
 package de.akkaoui.edelmetall.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,12 +34,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import de.akkaoui.edelmetall.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private enum class Tab(val label: String, val title: String, val icon: ImageVector) {
     PRICES("Kurse", "Edelmetallkurse", Icons.Filled.Home),
-    PORTFOLIO("Portfolio", "Mein Portfolio", Icons.Filled.AccountBox),
+    PORTFOLIO("Portfolio", "Portfolios", Icons.Filled.AccountBox),
     SETTINGS("Einstellungen", "Einstellungen", Icons.Filled.Settings),
 }
 
@@ -94,7 +97,7 @@ fun LockScreen(onUnlock: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+            Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.size(150.dp))
             Text("Edelmetall Tracker", style = MaterialTheme.typography.headlineSmall)
             Text(
                 "Gesperrt – mit deiner Displaysperre entsperren.",

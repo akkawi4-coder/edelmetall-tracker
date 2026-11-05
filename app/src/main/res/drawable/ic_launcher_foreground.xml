@@ -1,16 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App-Logo: goldenes „G" auf dunkelgrauem Kreis. Buchstabenform aus Inter Display ExtraBold (SIL Open Font License). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF9C7420"
-        android:pathData="M30,68 L40,46 L68,46 L78,68 Z" />
-    <path
-        android:fillColor="#FFD4AF37"
-        android:pathData="M34,66 L42,49 L66,49 L74,66 Z" />
-    <path
-        android:fillColor="#FFF1D27A"
-        android:pathData="M40,46 L44,40 L64,40 L68,46 Z" />
+    <!-- dunkelgrauer Kreis -->
+    <path android:pathData="M22,54 a32,32 0 1,0 64,0 a32,32 0 1,0 -64,0 z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="46" android:centerY="44" android:gradientRadius="44"
+                android:startColor="#FF474B53" android:centerColor="#FF33363C" android:endColor="#FF202226" />
+        </aapt:attr>
+    </path>
+    <!-- goldener Rand -->
+    <path android:pathData="M22.9,54 a31.1,31.1 0 1,0 62.2,0 a31.1,31.1 0 1,0 -62.2,0 z" android:strokeWidth="1.8">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="30" android:startY="24" android:endX="80" android:endY="86"
+                android:startColor="#FFF7E7A8" android:centerColor="#FFD4AF37" android:endColor="#FF8C6A1A" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M25.2,54 a28.8,28.8 0 1,0 57.6,0 a28.8,28.8 0 1,0 -57.6,0 z" android:strokeWidth="0.5" android:strokeColor="#66D4AF37" />
+    <!-- Schatten des G -->
+    <group android:translateX="0.6" android:translateY="1.2">
+        <path android:pathData="M54.51 71C63.33 71 69.41 65.36 69.41 57.01V52.54H55.04V58.38H61.63C61.56 61.78 58.93 64.06 54.75 64.06C49.56 64.06 46.59 60.34 46.59 54.02C46.59 47.68 49.53 43.94 54.66 43.94C58.22 43.94 60.48 45.8 61.07 48.72H69.17C68.44 41.71 62.14 37 54.38 37C45.42 37 38.59 43.26 38.59 54.02C38.59 64.3 44.94 71 54.51 71Z" android:fillColor="#73000000" />
+    </group>
+    <!-- goldenes G -->
+    <path android:pathData="M54.51 71C63.33 71 69.41 65.36 69.41 57.01V52.54H55.04V58.38H61.63C61.56 61.78 58.93 64.06 54.75 64.06C49.56 64.06 46.59 60.34 46.59 54.02C46.59 47.68 49.53 43.94 54.66 43.94C58.22 43.94 60.48 45.8 61.07 48.72H69.17C68.44 41.71 62.14 37 54.38 37C45.42 37 38.59 43.26 38.59 54.02C38.59 64.3 44.94 71 54.51 71Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="40" android:startY="36" android:endX="66" android:endY="72"
+                android:startColor="#FFFBEFC0" android:centerColor="#FFD9B441" android:endColor="#FF9C7420" />
+        </aapt:attr>
+    </path>
 </vector>

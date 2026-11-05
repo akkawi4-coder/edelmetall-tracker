@@ -24,7 +24,16 @@ data class Product(
     /** Feingewicht pro Stück in Gramm */
     val fineGrams: Double,
     val fineness: String,
+    /** true = vom Nutzer selbst angelegt */
+    val custom: Boolean = false,
+    /** Dateiname eines eigenen Fotos (nur bei eigenen Produkten) */
+    val photo: String? = null,
 )
+
+/** Ein Portfolio, z. B. „Gold“ oder „Käufe 2022“. */
+data class Portfolio(val id: String, val name: String)
+
+const val DEFAULT_PORTFOLIO_ID = "default"
 
 /** Preis je Feinunze (31,1035 g) in EUR */
 data class Quote(val metal: Metal, val pricePerOz: Double, val updatedAt: Long)
@@ -34,6 +43,7 @@ data class PricePoint(val t: Long, val p: Double)
 
 data class Holding(
     val id: String,
+    val portfolioId: String,
     val productId: String?,
     val name: String,
     val metal: Metal,
@@ -48,6 +58,8 @@ data class Holding(
     val totalFineGrams: Double get() = fineGramsPerUnit * quantity
 }
 
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Hell"), DARK("Dunkel") }
+
 enum class ValueMode(val label: String) { SPOT("Spotpreis"), BUYBACK("Ankaufspreis") }
 
 data class Settings(
@@ -58,6 +70,7 @@ data class Settings(
     val buybackDiscountPct: Double = 3.0,
     /** true = Einkaufswert als große Hauptzahl anzeigen */
     val purchaseHeadline: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 )
 
 enum class ChartRange(val label: String, val seconds: Long?) {
