@@ -167,7 +167,9 @@ fun SettingsScreen(vm: AppViewModel) {
         Section("Datenschutz & Info") {
             Text(
                 "• Kein Konto, keine Anmeldung, keine Werbung, keine Tracker.\n" +
-                    "• Portfolios, eigene Produkte und Einstellungen werden verschlüsselt nur auf diesem Gerät gespeichert. Eigene Fotos liegen im privaten App-Speicher.\n" +
+                    "• Alle Daten – Portfolios, eigene Produkte, Fotos, Einstellungen und Kursspeicher – liegen mit AES-256 verschlüsselt nur auf diesem Gerät. " +
+                        "Der Schlüssel steckt im Sicherheitschip des Handys (Android Keystore) und kann nicht ausgelesen werden. Manipulierte Dateien werden erkannt.\n" +
+                    "• Fotos der Foto-Erkennung werden sofort nach der Auswertung gelöscht.\n" +
                     "• Die App lädt ausschließlich öffentliche Kurse von gold-api.com. Dabei werden keine persönlichen Daten übertragen.\n" +
                     "• Die Foto-Erkennung läuft komplett auf dem Handy, Fotos verlassen das Gerät nicht.\n" +
                     "• Foto-Erkennung läuft komplett auf dem Handy, Fotos verlassen das Gerät nicht.\n" +

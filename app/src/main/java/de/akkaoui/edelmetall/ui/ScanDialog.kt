@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -116,6 +117,7 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
 
     val shotFile = remember { File(File(ctx.cacheDir, "scans").apply { mkdirs() }, "aufnahme.jpg") }
     val shotUri = remember { FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", shotFile) }
+    DisposableEffect(Unit) { onDispose { shotFile.delete() } }
 
     fun analyze(uri: Uri) {
         busy = true
@@ -139,6 +141,8 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
             }.getOrElse { ScanResult.Failed("Erkennung fehlgeschlagen: ${it.message ?: "unbekannter Fehler"}") }
             result = r
             busy = false
+            // Aufnahme sofort löschen – es bleibt nichts im Speicher liegen
+            withContext(Dispatchers.IO) { shotFile.delete() }
         }
     }
 

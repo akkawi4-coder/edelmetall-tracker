@@ -34,6 +34,7 @@ import de.akkaoui.edelmetall.data.GRAMS_PER_OZ
 import de.akkaoui.edelmetall.data.Metal
 import de.akkaoui.edelmetall.data.Product
 import de.akkaoui.edelmetall.data.ProductForm
+import de.akkaoui.edelmetall.security.SecureFiles
 import java.io.File
 import java.util.Locale
 import kotlin.math.PI
@@ -58,7 +59,10 @@ fun ProductImage(
 ) {
     if (photo != null && photo.exists()) {
         val bmp = remember(photo.path, photo.lastModified()) {
-            runCatching { BitmapFactory.decodeFile(photo.path)?.asImageBitmap() }.getOrNull()
+            runCatching {
+                // Fotos liegen verschlüsselt auf dem Gerät und werden nur im Speicher entschlüsselt
+                SecureFiles.read(photo)?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+            }.getOrNull()
         }
         if (bmp != null) {
             Image(

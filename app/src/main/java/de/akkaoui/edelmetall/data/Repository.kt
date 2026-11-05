@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.exifinterface.media.ExifInterface
 import de.akkaoui.edelmetall.security.CryptoStore
+import de.akkaoui.edelmetall.security.SecureFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +37,9 @@ class Repository private constructor(private val ctx: Context) {
 
     private val lock = Any()
     private val vault = CryptoStore(File(ctx.filesDir, "vault.bin"))
-    private val pricesFile = File(ctx.filesDir, "prices.json")
+    /** alte, unverschlüsselte Kursdatei (bis 0.3.0) – wird beim Start übernommen und gelöscht */
+    private val legacyPricesFile = File(ctx.filesDir, "prices.json")
+    private val pricesStore = CryptoStore(File(ctx.filesDir, "prices.bin"))
 
     private val _quotes = MutableStateFlow<Map<Metal, Quote>>(emptyMap())
     private val _recorded = MutableStateFlow<Map<Metal, List<PricePoint>>>(emptyMap())
@@ -63,6 +66,8 @@ class Repository private constructor(private val ctx: Context) {
         Fx.history = HistoryAssets.loadFx(ctx)
         loadPrices()
         loadVault()
+        // Fotos aus älteren Versionen nachträglich verschlüsseln
+        runCatching { SecureFiles.encryptLegacy(photoDir) }
     }
 
     private fun setSettings(s: Settings) {
@@ -148,9 +153,9 @@ class Repository private constructor(private val ctx: Context) {
     }
 
     private fun loadPrices() {
-        if (!pricesFile.exists()) return
+        val text = pricesStore.read() ?: legacyPricesFile.takeIf { it.exists() }?.readText() ?: return
         runCatching {
-            val root = JSONObject(pricesFile.readText())
+            val root = JSONObject(text)
             val q = root.optJSONObject("q") ?: JSONObject()
             val r = root.optJSONObject("r") ?: JSONObject()
             val quotes = mutableMapOf<Metal, Quote>()
@@ -184,12 +189,8 @@ class Repository private constructor(private val ctx: Context) {
         }
         val fx = JSONObject()
         for ((c, v) in _fx.value) fx.put(c.code, v)
-        val tmp = File(pricesFile.path + ".tmp")
-        tmp.writeText(JSONObject().put("q", q).put("r", r).put("fx", fx).toString())
-        if (!tmp.renameTo(pricesFile)) {
-            pricesFile.delete()
-            tmp.renameTo(pricesFile)
-        }
+        pricesStore.write(JSONObject().put("q", q).put("r", r).put("fx", fx).toString())
+        if (legacyPricesFile.exists()) legacyPricesFile.delete()
     }
 
     /** EUR je Feinunze an einem Tag (letzter bekannter Tageswert), heute = Live-Kurs. */
@@ -325,15 +326,16 @@ class Repository private constructor(private val ctx: Context) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 900) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 800) sample *= 2
         val raw = ctx.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: return null
         val rotated = rotateByExif(uri, raw)
-        val scale = 900f / maxOf(rotated.width, rotated.height)
+        val scale = 800f / maxOf(rotated.width, rotated.height)
         val bmp = if (scale < 1f) Bitmap.createScaledBitmap(rotated, (rotated.width * scale).toInt(), (rotated.height * scale).toInt(), true) else rotated
         val name = "p-${UUID.randomUUID()}.jpg"
-        photoFile(name).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 86, it) }
+        val jpeg = java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 82, it) }.toByteArray()
+        SecureFiles.write(photoFile(name), jpeg)
         name
     }.getOrNull()
 
@@ -363,7 +365,8 @@ class Repository private constructor(private val ctx: Context) {
         for (p in _customProducts.value) {
             val name = p.photo ?: continue
             val f = photoFile(name)
-            if (f.exists()) photos.put(name, Base64.encodeToString(f.readBytes(), Base64.NO_WRAP))
+            val bytes = if (f.exists()) SecureFiles.read(f) else null
+            if (bytes != null) photos.put(name, Base64.encodeToString(bytes, Base64.NO_WRAP))
         }
         root.put("photos", photos).toString()
     }
@@ -373,7 +376,7 @@ class Repository private constructor(private val ctx: Context) {
         val root = JSONObject(text)
         root.optJSONObject("photos")?.let { photos ->
             for (key in photos.keys()) {
-                runCatching { photoFile(key).writeBytes(Base64.decode(photos.getString(key), Base64.NO_WRAP)) }
+                runCatching { SecureFiles.write(photoFile(key), Base64.decode(photos.getString(key), Base64.NO_WRAP)) }
             }
         }
         applyVault(root)
