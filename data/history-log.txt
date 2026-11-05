@@ -1,4 +1,4 @@
-Lauf: 2026-11-05T21:29:24+00:00
+Lauf: 2026-11-05T21:45:29+00:00
 Lade EUR/USD-Referenzkurse der EZB …
   7130 Wechselkurse
   Gold-Monatswerte: 2326
