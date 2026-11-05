@@ -1,6 +1,8 @@
 package de.akkaoui.edelmetall.ui
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.net.Uri
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text as MlText
@@ -83,7 +87,6 @@ data class Prefill(
     val note: String? = null,
 )
 
-private enum class ScanMode(val label: String) { PRODUCT("Produkt"), INVOICE("Rechnung") }
 
 private sealed interface ScanResult {
     data class Products(val candidates: List<Pair<Product, Double>>, val text: String) : ScanResult
@@ -101,7 +104,10 @@ private sealed interface ScanResult {
 fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var mode by remember { mutableStateOf(ScanMode.PRODUCT) }
+    var cameraAllowed by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    var askCamera by remember { mutableStateOf(!cameraAllowed) }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ScanResult?>(null) }
@@ -121,7 +127,8 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
                 preview = bmp?.asImageBitmap()
                 val text = recognize(ctx, uri)
                 val catalog = vm.repo.searchProducts("", null)
-                if (mode == ScanMode.PRODUCT) {
+                // Automatisch unterscheiden: Rechnung oder Produktfoto
+                if (!Matcher.looksLikeInvoice(text)) {
                     val color = bmp?.let { colorHint(it) }
                     ScanResult.Products(Matcher.rank(text.text, catalog, color).take(6), text.text)
                 } else {
@@ -135,10 +142,20 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
         }
     }
 
+    val requestCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraAllowed = granted
+        askCamera = false
+    }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) analyze(shotUri) }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) analyze(uri) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        if (askCamera) {
+            CameraPermissionDialog(
+                onAllow = { requestCamera.launch(Manifest.permission.CAMERA) },
+                onGalleryOnly = { askCamera = false }
+            )
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.safeDrawingPadding()) {
                 Column(
@@ -150,21 +167,30 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
                         Spacer(Modifier.width(8.dp))
                         Text("Per Foto erkennen", style = MaterialTheme.typography.titleLarge)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ScanMode.entries.forEach { m ->
-                            FilterChip(selected = mode == m, onClick = { mode = m; result = null; preview = null }, label = { Text(m.label) })
+                    // Hinweisfeld
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Was möchtest du fotografieren?", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "📷  Produkt fotografieren – die Seite mit der Aufschrift (Hersteller, Gewicht, Feinheit), " +
+                                    "gerade von vorne und gut ausgeleuchtet.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "🧾  Rechnung fotografieren – flach hinlegen, vollständig und scharf im Bild.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "Die App erkennt automatisch, ob es ein Produkt oder eine Rechnung ist.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            )
                         }
                     }
-                    Text(
-                        if (mode == ScanMode.PRODUCT)
-                            "Fotografiere die Seite mit der Aufschrift (Hersteller, Gewicht, Feinheit) gerade von vorne und gut ausgeleuchtet. " +
-                                "Bei Münzen hilft die Seite mit Gewicht und Münzname."
-                        else "Fotografiere die Rechnung flach und vollständig. Erkannt werden Produkte, Stückzahl, Betrag und Rechnungsdatum.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(enabled = !busy, onClick = { takePhoto.launch(shotUri) }) { Text("Foto aufnehmen") }
+                        Button(enabled = !busy, onClick = {
+                            if (cameraAllowed) takePhoto.launch(shotUri) else askCamera = true
+                        }) { Text("Foto aufnehmen") }
                         OutlinedButton(enabled = !busy, onClick = {
                             pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         }) { Text("Aus Galerie") }
@@ -257,6 +283,25 @@ fun ScanDialog(vm: AppViewModel, onDismiss: () -> Unit, onResult: (List<Prefill>
             }
         }
     }
+}
+
+@Composable
+private fun CameraPermissionDialog(onAllow: () -> Unit, onGalleryOnly: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onGalleryOnly,
+        title = { Text("Kamera verwenden?") },
+        text = {
+            Text(
+                "Für die Foto-Erkennung möchte die App deine Kamera verwenden, um Barren, Münzen oder Rechnungen zu fotografieren.\n\n" +
+                    "• Fotos werden nur auf dem Handy ausgewertet und nicht hochgeladen.\n" +
+                    "• Die Kamera wird nur genutzt, wenn du „Foto aufnehmen“ tippst.\n" +
+                    "• Du kannst die Berechtigung jederzeit in den Android-Einstellungen widerrufen.\n\n" +
+                    "Ohne Kamera kannst du auch ein vorhandenes Foto aus der Galerie wählen."
+            )
+        },
+        confirmButton = { TextButton(onClick = onAllow) { Text("Weiter zur Freigabe") } },
+        dismissButton = { TextButton(onClick = onGalleryOnly) { Text("Nur Galerie") } }
+    )
 }
 
 @Composable
@@ -467,6 +512,17 @@ private object Matcher {
         return catalog.map { it to score(t, it, color, strict = false) }
             .filter { it.second >= 3.0 }
             .sortedByDescending { it.second }
+    }
+
+    /** Rechnung erkennen: typische Begriffe, mehrere Beträge oder viele Textzeilen. */
+    fun looksLikeInvoice(text: MlText): Boolean {
+        val t = " " + norm(text.text) + " "
+        val words = listOf("RECHNUNG", "INVOICE", "MWST", "UST", "STEUER", "SUMME", "GESAMT", "NETTO", "BRUTTO",
+            "BESTELL", "ARTIKEL", "MENGE", "ZAHLUNG", "LIEFER", "KUNDEN", "BETRAG", "TOTAL", "IBAN", "VERSAND")
+        val hits = words.count { t.contains(it) }
+        val amounts = money.findAll(text.text).count()
+        val lines = text.textBlocks.sumOf { it.lines.size }
+        return hits >= 2 || (hits >= 1 && amounts >= 2) || amounts >= 4 || lines >= 18
     }
 
     private val money = Regex("(\\d{1,3}(?:[.\\s]\\d{3})*,\\d{2}|\\d+\\.\\d{2})(?!\\s*(G|GR|KG|OZ|GRAMM)\\b)")
