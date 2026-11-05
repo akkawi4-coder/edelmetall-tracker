@@ -1,5 +1,6 @@
 package de.akkaoui.edelmetall.util
 
+import de.akkaoui.edelmetall.data.Fx
 import de.akkaoui.edelmetall.data.GRAMS_PER_OZ
 import de.akkaoui.edelmetall.data.Holding
 import de.akkaoui.edelmetall.data.Metal
@@ -20,6 +21,9 @@ object Valuation {
     fun value(h: Holding, quotes: Map<Metal, Quote>, s: Settings): Double? =
         pricePerGram(h.metal, quotes, s)?.let { it * h.totalFineGrams }
 
+    /** Kaufpreis der Position in EUR (umgerechnet zum aktuellen Kurs, falls in anderer Währung erfasst). */
+    fun costEur(h: Holding): Double = Fx.toEur(h.purchaseTotal, h.currency)
+
     data class Summary(
         val value: Double,
         val cost: Double,
@@ -36,7 +40,7 @@ object Valuation {
         for (h in holdings) {
             val v = value(h, quotes, s)
             if (v == null) missing = true else value += v
-            cost += h.purchaseTotal
+            cost += costEur(h)
         }
         return Summary(value, cost, missing)
     }

@@ -55,9 +55,19 @@ class Repository private constructor(private val ctx: Context) {
     /** Mitgelieferte Tageshistorie (aus dem Build). */
     val daily: Map<Metal, List<PricePoint>> by lazy { HistoryAssets.load(ctx) }
 
+    private val _fx = MutableStateFlow<Map<Currency, Double>>(emptyMap())
+    /** Live-Wechselkurse (Fremdwährung je 1 EUR) */
+    val fx: StateFlow<Map<Currency, Double>> = _fx
+
     init {
+        Fx.history = HistoryAssets.loadFx(ctx)
         loadPrices()
         loadVault()
+    }
+
+    private fun setSettings(s: Settings) {
+        _settings.value = s
+        Fx.display = s.currency
     }
 
     // ------------------------------------------------------------------ Preise
@@ -77,6 +87,19 @@ class Repository private constructor(private val ctx: Context) {
                 }
             }
             if (fresh.isEmpty()) throw lastError ?: IllegalStateException("Keine Preise")
+            // Wechselkurs für die Anzeigewährung: Goldpreis in Fremdwährung / Goldpreis in EUR
+            val cur = _settings.value.currency
+            val goldEur = fresh[Metal.GOLD]?.pricePerOz
+            if (cur != Currency.EUR && goldEur != null) {
+                delay(1_100)
+                runCatching { PriceApi.fetchQuote(Metal.GOLD, cur.code) }.getOrNull()?.let { q ->
+                    val r = q.pricePerOz / goldEur
+                    if (r > 0.01 && r < 100) {
+                        _fx.value = _fx.value + (cur to r)
+                        Fx.live = _fx.value
+                    }
+                }
+            }
             synchronized(lock) {
                 val now = System.currentTimeMillis() / 1000
                 _quotes.value = _quotes.value + fresh
@@ -143,6 +166,10 @@ class Repository private constructor(private val ctx: Context) {
             }
             _quotes.value = quotes
             _recorded.value = rec
+            root.optJSONObject("fx")?.let { o ->
+                _fx.value = Currency.entries.filter { o.has(it.code) }.associateWith { o.getDouble(it.code) }
+                Fx.live = _fx.value
+            }
         }
     }
 
@@ -155,12 +182,73 @@ class Repository private constructor(private val ctx: Context) {
             for (p in list) arr.put(JSONArray().put(p.t).put(p.p))
             r.put(m.symbol, arr)
         }
+        val fx = JSONObject()
+        for ((c, v) in _fx.value) fx.put(c.code, v)
         val tmp = File(pricesFile.path + ".tmp")
-        tmp.writeText(JSONObject().put("q", q).put("r", r).toString())
+        tmp.writeText(JSONObject().put("q", q).put("r", r).put("fx", fx).toString())
         if (!tmp.renameTo(pricesFile)) {
             pricesFile.delete()
             tmp.renameTo(pricesFile)
         }
+    }
+
+    /** EUR je Feinunze an einem Tag (letzter bekannter Tageswert), heute = Live-Kurs. */
+    fun priceOn(metal: Metal, epochDay: Long, today: Long = System.currentTimeMillis() / 86_400_000L): Double? {
+        if (epochDay >= today) _quotes.value[metal]?.let { return it.pricePerOz }
+        val list = daily[metal].orEmpty()
+        val t = epochDay * 86_400L + 86_399L
+        if (list.isNotEmpty() && list[0].t <= t) {
+            var lo = 0
+            var hi = list.size - 1
+            while (lo < hi) {
+                val mid = (lo + hi + 1) / 2
+                if (list[mid].t <= t) lo = mid else hi = mid - 1
+            }
+            val hist = list[lo]
+            // Nach dem Ende der Historie: eigene Aufzeichnung oder Live-Kurs
+            if (t - hist.t <= 10 * 86_400L) return hist.p
+        }
+        _recorded.value[metal]?.lastOrNull { it.t <= t }?.let { return it.p }
+        return _quotes.value[metal]?.pricePerOz ?: list.lastOrNull()?.p
+    }
+
+    /**
+     * Wertentwicklung eines Portfolios in der Anzeigewährung.
+     * Ergebnis: Wert-Reihe und Einkaufswert-Reihe (t = Unix-Sekunden).
+     */
+    fun portfolioSeries(holdings: List<Holding>, s: Settings, fromDay: Long?): Pair<List<PricePoint>, List<PricePoint>> {
+        if (holdings.isEmpty()) return emptyList<PricePoint>() to emptyList()
+        val today = System.currentTimeMillis() / 86_400_000L
+        val first = holdings.minOf { it.purchaseEpochDay }.coerceAtMost(today)
+        val start = maxOf(first, fromDay ?: first)
+        val span = today - start
+        val step = when {
+            span > 3 * 365 -> 7L
+            span > 400 -> 3L
+            else -> 1L
+        }
+        val factor = if (s.valueMode == ValueMode.BUYBACK) 1 - s.buybackDiscountPct / 100.0 else 1.0
+        val sorted = holdings.sortedBy { it.purchaseEpochDay }
+        val values = ArrayList<PricePoint>()
+        val costs = ArrayList<PricePoint>()
+        var d = start
+        while (true) {
+            val day = if (d > today) today else d
+            var v = 0.0
+            var c = 0.0
+            for (h in sorted) {
+                if (h.purchaseEpochDay > day) break
+                val p = priceOn(h.metal, day, today) ?: continue
+                v += h.totalFineGrams / GRAMS_PER_OZ * p * factor
+                c += Fx.toEur(h.purchaseTotal, h.currency)
+            }
+            val t = day * 86_400L + 43_200L
+            values += PricePoint(t, v * Fx.rateAt(s.currency, day))
+            costs += PricePoint(t, Fx.fromEur(c, s.currency))
+            if (day >= today) break
+            d += step
+        }
+        return values to costs
     }
 
     // ------------------------------------------------------------------ Portfolios
@@ -264,7 +352,7 @@ class Repository private constructor(private val ctx: Context) {
     // ------------------------------------------------------------------ Einstellungen & Backup
 
     fun updateSettings(change: (Settings) -> Settings) = synchronized(lock) {
-        _settings.value = change(_settings.value)
+        setSettings(change(_settings.value))
         saveVault()
     }
 
@@ -316,7 +404,7 @@ class Repository private constructor(private val ctx: Context) {
         // Version 1 kannte nur ein Portfolio: alles ins erste übernehmen
         _holdings.value = parseHoldings(root.optJSONArray("holdings"), portfolios.first().id)
             .map { if (it.portfolioId in ids) it else it.copy(portfolioId = portfolios.first().id) }
-        root.optJSONObject("settings")?.let { _settings.value = parseSettings(it) }
+        root.optJSONObject("settings")?.let { setSettings(parseSettings(it)) }
     }
 
     private fun saveVault() = vault.write(vaultJson().toString())
@@ -353,6 +441,7 @@ class Repository private constructor(private val ctx: Context) {
                     .put("total", h.purchaseTotal)
                     .put("day", h.purchaseEpochDay)
                     .put("note", h.note)
+                    .put("cur", h.currency.code)
             )
         }
         val s = _settings.value
@@ -363,6 +452,9 @@ class Repository private constructor(private val ctx: Context) {
             .put("discount", s.buybackDiscountPct)
             .put("purchaseHeadline", s.purchaseHeadline)
             .put("theme", s.themeMode.name)
+            .put("currency", s.currency.code)
+            .put("unit", s.unit.name)
+            .put("sort", s.sort.name)
         return JSONObject()
             .put("version", 2)
             .put("portfolios", ports)
@@ -407,6 +499,7 @@ class Repository private constructor(private val ctx: Context) {
                 purchaseTotal = o.getDouble("total"),
                 purchaseEpochDay = o.getLong("day"),
                 note = o.optString("note"),
+                currency = Currency.of(o.optString("cur", "EUR")),
             )
         }
     }
@@ -418,5 +511,8 @@ class Repository private constructor(private val ctx: Context) {
         buybackDiscountPct = o.optDouble("discount", 3.0),
         purchaseHeadline = o.optBoolean("purchaseHeadline", false),
         themeMode = runCatching { ThemeMode.valueOf(o.optString("theme")) }.getOrDefault(ThemeMode.SYSTEM),
+        currency = Currency.of(o.optString("currency", "EUR")),
+        unit = runCatching { WeightUnit.valueOf(o.optString("unit")) }.getOrDefault(WeightUnit.OZ),
+        sort = runCatching { SortMode.valueOf(o.optString("sort")) }.getOrDefault(SortMode.DATE_DESC),
     )
 }

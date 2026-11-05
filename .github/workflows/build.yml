@@ -80,11 +80,11 @@ jobs:
       - name: Download-Seite aktualisieren (Releases)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.${{ github.run_number }}
-          name: Edelmetall Tracker 0.2 (Build ${{ github.run_number }})
+          tag_name: v0.3.${{ github.run_number }}
+          name: Edelmetall Tracker 0.3 (Build ${{ github.run_number }})
           body: |
             APK zum Installieren: unten unter Assets auf EdelmetallTracker.apk tippen.
-            Neu in 0.2: mehrere Portfolios, eigene Produkte mit Foto, detaillierte Produktbilder,
-            neues Logo, Hell-/Dunkel-Design, Kurshistorie ab Euro-Einführung.
+            Neu in 0.3: Metall-Verteilung und Wertentwicklung im Portfolio, Einheiten g/oz/kg, Währung (EUR/USD/CHF/GBP),
+            Sortierung, Erkennung per Foto (Produkt und Rechnung), Kupfer, Preisvorschlag, überarbeitete Produktbilder.
           files: EdelmetallTracker.apk
           make_latest: true

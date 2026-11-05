@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -103,6 +104,7 @@ private fun metalWord(m: Metal) = when (m) {
     Metal.SILVER -> "FEINSILBER"
     Metal.PLATINUM -> "FEINPLATIN"
     Metal.PALLADIUM -> "FEINPALLADIUM"
+    Metal.COPPER -> "KUPFER"
 }
 
 private fun chemSymbol(m: Metal) = when (m) {
@@ -110,6 +112,7 @@ private fun chemSymbol(m: Metal) = when (m) {
     Metal.SILVER -> "Ag"
     Metal.PLATINUM -> "Pt"
     Metal.PALLADIUM -> "Pd"
+    Metal.COPPER -> "Cu"
 }
 
 /** Münzname ohne Gewichts- und Metallzusatz, z. B. „Maple Leaf 1 Unze Gold“ → „MAPLE LEAF“. */
@@ -158,64 +161,102 @@ private fun DrawScope.embossed(text: String, cx: Float, baseline: Float, sizePx:
 private fun DrawScope.drawBar(metal: Metal, grams: Double?, maker: String?, fineness: String?, detailed: Boolean, showWeight: Boolean) {
     val t = Tones(metal)
     val s = size.minDimension
-    val cast = (grams ?: 0.0) >= 250.0
-    if (cast) {
-        drawCastBar(t, s, grams, maker, fineness, metal, detailed, showWeight)
+    val g = grams ?: 0.0
+    if (g >= 250.0) {
+        drawCastBar(t, s, grams, fineness, metal, detailed, showWeight)
         return
     }
-    // Geprägter (Minted) Barren im Hochformat
-    val bw = s * 0.64f
-    val bh = s * 0.92f
-    val left = (size.width - bw) / 2
-    val top = (size.height - bh) / 2
-    val r = CornerRadius(s * 0.07f)
+    val cx = size.width / 2
+    // Kleine Barren (bis 20 g) stecken – wie im Handel – in einer Zertifikatskarte mit Blister
+    val carded = g in 0.01..20.0
+    var scale = 1f
+    if (carded) {
+        val cw = s * 0.70f
+        val ch = s * 0.96f
+        val cl = (size.width - cw) / 2
+        val ct = (size.height - ch) / 2
+        drawRoundRect(Color.Black.copy(alpha = 0.18f), Offset(cl + s * 0.02f, ct + s * 0.025f), Size(cw, ch), CornerRadius(s * 0.05f))
+        drawRoundRect(
+            Brush.verticalGradient(listOf(Color(0xFFFBFAF6), Color(0xFFE9E6DE)), ct, ct + ch),
+            Offset(cl, ct), Size(cw, ch), CornerRadius(s * 0.05f)
+        )
+        // Metallfarbener Kopfstreifen der Karte
+        drawRoundRect(lerp(t.base, Color.White, 0.25f).copy(alpha = 0.9f), Offset(cl, ct), Size(cw, ch * 0.12f), CornerRadius(s * 0.05f))
+        drawRect(lerp(t.base, Color.White, 0.25f).copy(alpha = 0.9f), Offset(cl, ct + ch * 0.06f), Size(cw, ch * 0.06f))
+        if (detailed) {
+            val line = Color(0xFFB9B4A8)
+            for (i in 0 until 3) {
+                val y = ct + ch * (0.86f + i * 0.035f)
+                drawLine(line, Offset(cl + cw * 0.18f, y), Offset(cl + cw * (if (i == 2) 0.55f else 0.82f), y), strokeWidth = s * 0.006f)
+            }
+        }
+        // Blisterfenster
+        val bw = cw * 0.70f
+        val bh = ch * 0.62f
+        drawRoundRect(Color.White.copy(alpha = 0.55f), Offset(cx - bw / 2, ct + ch * 0.18f), Size(bw, bh), CornerRadius(s * 0.04f))
+        drawRoundRect(Color(0xFFCFCBC1), Offset(cx - bw / 2, ct + ch * 0.18f), Size(bw, bh), CornerRadius(s * 0.04f), style = Stroke(s * 0.006f))
+        // Barren je nach Gewicht kleiner
+        scale = when {
+            g <= 1.5 -> 0.46f
+            g <= 3.0 -> 0.52f
+            g <= 6.0 -> 0.57f
+            g <= 12.0 -> 0.62f
+            else -> 0.66f
+        }
+    }
+    val bw = s * 0.64f * scale
+    val bh = s * 0.92f * scale
+    val left = cx - bw / 2
+    val top = if (carded) (size.height - s * 0.96f) / 2 + s * 0.96f * 0.18f + (s * 0.96f * 0.62f - bh) / 2 else (size.height - bh) / 2
+    val unit = s * scale
+    val r = CornerRadius(unit * 0.07f)
 
-    drawRoundRect(Color.Black.copy(alpha = 0.22f), Offset(left + s * 0.025f, top + s * 0.03f), Size(bw, bh), r)
+    drawRoundRect(Color.Black.copy(alpha = 0.22f), Offset(left + unit * 0.02f, top + unit * 0.03f), Size(bw, bh), r)
     drawRoundRect(
         Brush.linearGradient(listOf(t.light, t.base, t.dark), Offset(left, top), Offset(left + bw, top + bh)),
         Offset(left, top), Size(bw, bh), r
     )
-    // umlaufende Fase
-    val inset1 = s * 0.035f
+    val inset1 = unit * 0.035f
     drawRoundRect(
         Brush.linearGradient(listOf(t.dark, t.mid, t.light), Offset(left, top), Offset(left + bw, top + bh)),
-        Offset(left + inset1, top + inset1), Size(bw - 2 * inset1, bh - 2 * inset1), CornerRadius(s * 0.05f)
+        Offset(left + inset1, top + inset1), Size(bw - 2 * inset1, bh - 2 * inset1), CornerRadius(unit * 0.05f)
     )
-    // Prägefläche
-    val inset2 = s * 0.06f
+    val inset2 = unit * 0.06f
     val fx = left + inset2
     val fy = top + inset2
     val fw = bw - 2 * inset2
     val fh = bh - 2 * inset2
     drawRoundRect(
         Brush.verticalGradient(listOf(t.mid, t.base, lerp(t.base, t.dark, 0.35f)), fy, fy + fh),
-        Offset(fx, fy), Size(fw, fh), CornerRadius(s * 0.035f)
+        Offset(fx, fy), Size(fw, fh), CornerRadius(unit * 0.035f)
     )
     if (detailed) {
         drawRoundRect(
-            t.dark.copy(alpha = 0.55f), Offset(fx + s * 0.025f, fy + s * 0.025f),
-            Size(fw - s * 0.05f, fh - s * 0.05f), CornerRadius(s * 0.025f), style = Stroke(s * 0.006f)
+            t.dark.copy(alpha = 0.55f), Offset(fx + unit * 0.025f, fy + unit * 0.025f),
+            Size(fw - unit * 0.05f, fh - unit * 0.05f), CornerRadius(unit * 0.025f), style = Stroke(unit * 0.006f)
         )
     }
     sheen(Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(left, top, left + bw, top + bh, r)) }, s)
 
-    val cx = size.width / 2
-    val maxW = fw * 0.88f
+    val maxW = fw * 0.86f
     if (detailed) {
-        embossed((maker ?: "").uppercase(Locale.GERMANY), cx, fy + fh * 0.17f, s * 0.052f, t, maxW, 0.06f)
-        // kleines Herstellerzeichen
-        drawCircle(t.dark.copy(alpha = 0.6f), s * 0.05f, Offset(cx, fy + fh * 0.30f), style = Stroke(s * 0.008f))
-        embossed(chemSymbol(metal), cx, fy + fh * 0.30f + s * 0.018f, s * 0.045f, t, maxW)
-        embossed(weightShort(grams), cx, fy + fh * 0.55f, s * 0.13f, t, maxW)
-        embossed(metalWord(metal), cx, fy + fh * 0.71f, s * 0.05f, t, maxW, 0.08f)
-        embossed(fineness ?: "", cx, fy + fh * 0.84f, s * 0.07f, t, maxW)
-        embossed("ASSAYER · MELTER", cx, fy + fh * 0.94f, s * 0.026f, t, maxW, 0.05f, bold = false)
+        // neutrales Prägezeichen: Raute mit chemischem Symbol
+        val my = fy + fh * 0.22f
+        val d = unit * 0.075f
+        drawPath(Path().apply { moveTo(cx, my - d); lineTo(cx + d, my); lineTo(cx, my + d); lineTo(cx - d, my); close() },
+            t.dark.copy(alpha = 0.6f), style = Stroke(unit * 0.008f))
+        embossed(chemSymbol(metal), cx, my + unit * 0.018f, unit * 0.05f, t, maxW)
+        embossed(weightShort(grams), cx, fy + fh * 0.52f, unit * 0.13f, t, maxW)
+        embossed(metalWord(metal), cx, fy + fh * 0.68f, unit * 0.05f, t, maxW, 0.08f)
+        embossed(fineness ?: "", cx, fy + fh * 0.81f, unit * 0.07f, t, maxW)
+        val serial = "Nº " + (abs((maker + grams + metal).hashCode()) % 900000 + 100000)
+        embossed(serial, cx, fy + fh * 0.93f, unit * 0.034f, t, maxW, 0.04f, bold = false)
     } else if (showWeight) {
-        embossed(weightShort(grams).replace(" ", ""), cx, fy + fh * 0.58f, s * 0.17f, t, maxW)
+        embossed(weightShort(grams).replace(" ", ""), cx, fy + fh * 0.58f, unit * 0.17f, t, maxW)
     }
 }
 
-private fun DrawScope.drawCastBar(t: Tones, s: Float, grams: Double?, maker: String?, fineness: String?, metal: Metal, detailed: Boolean, showWeight: Boolean) {
+private fun DrawScope.drawCastBar(t: Tones, s: Float, grams: Double?, fineness: String?, metal: Metal, detailed: Boolean, showWeight: Boolean) {
     // Gegossener Barren: Trapez in leichter Draufsicht
     val w = s * 0.96f
     val h = s * 0.62f
@@ -251,7 +292,7 @@ private fun DrawScope.drawCastBar(t: Tones, s: Float, grams: Double?, maker: Str
     val cx = size.width / 2
     val maxW = fw * 0.82f
     if (detailed) {
-        embossed((maker ?: "").uppercase(Locale.GERMANY), cx, fy + fh * 0.22f, s * 0.05f, t, maxW, 0.06f)
+        embossed(chemSymbol(metal), cx, fy + fh * 0.24f, s * 0.06f, t, maxW)
         embossed(weightShort(grams), cx, fy + fh * 0.55f, s * 0.12f, t, maxW)
         embossed("${metalWord(metal)} ${fineness ?: ""}".trim(), cx, fy + fh * 0.80f, s * 0.05f, t, maxW, 0.05f)
     } else if (showWeight) {
@@ -313,8 +354,7 @@ private fun DrawScope.drawCoin(metal: Metal, grams: Double?, name: String?, fine
             drawCircle(t.dark.copy(alpha = 0.35f), s * 0.005f, c + Offset(cos(a) * rInner * 0.93f, sin(a) * rInner * 0.93f))
         }
         val ringText = s * 0.058f
-        val title = coinTitle(name)
-        arcText(title, c, rInner + s * 0.025f, top = true, sizePx = ringText, t = t)
+        arcText("${metalWord(metal)} · ${chemSymbol(metal).uppercase(Locale.GERMANY)}", c, rInner + s * 0.025f, top = true, sizePx = ringText, t = t)
         val bottom = listOf(weightShort(grams).uppercase(Locale.GERMANY), metalWord(metal), fineness ?: "")
             .filter { it.isNotBlank() }.joinToString(" · ")
         arcText(bottom, c, rField - s * 0.035f, top = false, sizePx = ringText * 0.85f, t = t)
@@ -322,13 +362,28 @@ private fun DrawScope.drawCoin(metal: Metal, grams: Double?, name: String?, fine
         // Mittelfeld: Gewicht und chemisches Zeichen
         embossed(chemSymbol(metal), c.x, c.y - rInner * 0.30f, s * 0.07f, t, rInner * 1.4f)
         embossed(weightShort(grams), c.x, c.y + rInner * 0.22f, s * 0.12f, t, rInner * 1.6f)
-        // feine Sternchen links und rechts
-        embossed("✦", c.x - rInner * 0.72f, c.y + s * 0.02f, s * 0.045f, t, s)
-        embossed("✦", c.x + rInner * 0.72f, c.y + s * 0.02f, s * 0.045f, t, s)
+        // neutraler Lorbeerkranz
+        laurel(c, rInner * 0.80f, s, t)
     } else if (showWeight) {
         embossed(weightShort(grams).replace(" ", ""), c.x, c.y + s * 0.07f, s * 0.2f, t, rField * 1.7f)
     }
     sheen(Path().apply { addOval(androidx.compose.ui.geometry.Rect(c, rOut)) }, s)
+}
+
+/** Zwei Lorbeerzweige unten um das Mittelfeld – neutrales Münzmotiv. */
+private fun DrawScope.laurel(c: Offset, r: Float, s: Float, t: Tones) {
+    val leaf = s * 0.028f
+    for (side in listOf(-1f, 1f)) {
+        for (i in 0 until 7) {
+            val deg = 255.0 - i * 17.0
+            val aDeg = if (side < 0) deg else 180.0 - deg
+            val a = Math.toRadians(aDeg).toFloat()
+            val p = c + Offset(cos(a) * r, -sin(a) * r)
+            rotate(degrees = -(aDeg.toFloat() + 90f) + side * 25f, pivot = p) {
+                drawOval(t.dark.copy(alpha = 0.5f), Offset(p.x - leaf, p.y - leaf * 0.42f), Size(leaf * 2, leaf * 0.84f))
+            }
+        }
+    }
 }
 
 /** Text entlang eines Kreisbogens, oben oder unten mittig. */

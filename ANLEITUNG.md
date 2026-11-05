@@ -1,4 +1,4 @@
-# Edelmetall Tracker – Version 0.2 (Test)
+# Edelmetall Tracker – Version 0.3 (Test)
 
 Android-App zum Verfolgen von Gold, Silber, Platin und Palladium. Ohne Konto, ohne eigenen Server, kostenlos.
 
@@ -12,6 +12,9 @@ Android-App zum Verfolgen von Gold, Silber, Platin und Palladium. Ohne Konto, oh
 - **Positionen** aus der Produktdatenbank wählen (≈ 250 Barren und Münzen) oder **eigene Produkte anlegen** (mit Foto)
 - **Produktbilder** mit Prägung: Hersteller, Gewicht, Feinheit
 - **Design:** Hell, Dunkel oder automatisch wie am Handy
+- **Neu in 0.3:** Kupfer, Währung wählbar (EUR, USD, CHF, GBP), Kurse in g/oz/kg, Metall-Verteilung und
+  Wertentwicklung je Portfolio, Sortierung der Positionen, Preisvorschlag beim Anlegen,
+  Erkennung per Foto (Barren, Münze oder Rechnung – läuft offline auf dem Handy)
 - **Haltefrist:** „steuerfrei ab …“ pro Position (§ 23 EStG, keine Steuerberatung)
 - **Bewertung:** Spotpreis oder geschätzter Ankaufspreis (Spot minus einstellbarer Abschlag)
 - **Sicherheit:** Entsperren mit Displaysperre (Fingerabdruck/Gesicht/PIN), verschlüsselte Speicherung

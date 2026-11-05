@@ -6,7 +6,8 @@ enum class Metal(val symbol: String, val label: String, val color: Long) {
     GOLD("XAU", "Gold", 0xFFD4AF37),
     SILVER("XAG", "Silber", 0xFFC9CCD3),
     PLATINUM("XPT", "Platin", 0xFF9FB3C8),
-    PALLADIUM("XPD", "Palladium", 0xFFB9B1A3);
+    PALLADIUM("XPD", "Palladium", 0xFFB9B1A3),
+    COPPER("HG", "Kupfer", 0xFFC27A4E);
 
     companion object {
         fun fromSymbol(s: String?): Metal? = entries.firstOrNull { it.symbol == s }
@@ -50,12 +51,41 @@ data class Holding(
     val form: ProductForm,
     val fineGramsPerUnit: Double,
     val quantity: Double,
-    /** Kaufpreis gesamt für die Position in EUR */
+    /** Kaufpreis gesamt für die Position, in [currency] */
     val purchaseTotal: Double,
     val purchaseEpochDay: Long,
     val note: String,
+    /** Währung, in der der Kaufpreis eingegeben wurde */
+    val currency: Currency = Currency.EUR,
 ) {
     val totalFineGrams: Double get() = fineGramsPerUnit * quantity
+}
+
+enum class Currency(val code: String, val label: String) {
+    EUR("EUR", "Euro (€)"),
+    USD("USD", "US-Dollar ($)"),
+    CHF("CHF", "Schweizer Franken (CHF)"),
+    GBP("GBP", "Britisches Pfund (£)");
+
+    companion object {
+        fun of(code: String?): Currency = entries.firstOrNull { it.code == code } ?: EUR
+    }
+}
+
+/** Gewichtseinheit für Kurse und Charts */
+enum class WeightUnit(val label: String, val grams: Double) {
+    G("g", 1.0),
+    OZ("oz", GRAMS_PER_OZ),
+    KG("kg", 1000.0),
+}
+
+enum class SortMode(val label: String) {
+    PROFIT_DESC("Größter Gewinn"),
+    LOSS_DESC("Größter Verlust"),
+    VALUE_DESC("Höchster Wert"),
+    VALUE_ASC("Kleinster Wert"),
+    DATE_DESC("Neuestes Kaufdatum"),
+    DATE_ASC("Ältestes Kaufdatum"),
 }
 
 enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Hell"), DARK("Dunkel") }
@@ -71,6 +101,9 @@ data class Settings(
     /** true = Einkaufswert als große Hauptzahl anzeigen */
     val purchaseHeadline: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val currency: Currency = Currency.EUR,
+    val unit: WeightUnit = WeightUnit.OZ,
+    val sort: SortMode = SortMode.DATE_DESC,
 )
 
 enum class ChartRange(val label: String, val seconds: Long?) {

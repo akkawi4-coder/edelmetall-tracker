@@ -55,6 +55,15 @@ import de.akkaoui.edelmetall.ui.theme.Gain
 import de.akkaoui.edelmetall.ui.theme.Loss
 import de.akkaoui.edelmetall.util.Fmt
 import de.akkaoui.edelmetall.util.Valuation
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import de.akkaoui.edelmetall.data.ChartRange
+import de.akkaoui.edelmetall.data.PricePoint
+import de.akkaoui.edelmetall.data.SortMode
+import de.akkaoui.edelmetall.ui.components.DonutChart
+import de.akkaoui.edelmetall.ui.components.PriceChart
+import de.akkaoui.edelmetall.ui.theme.metalColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +84,7 @@ fun PortfolioScreen(vm: AppViewModel) {
     var naming by remember { mutableStateOf<Portfolio?>(null) }
     var creatingPortfolio by remember { mutableStateOf(false) }
     var deletingPortfolio by remember { mutableStateOf<Portfolio?>(null) }
+    var sortMenu by remember { mutableStateOf(false) }
 
     val holdings = if (selected == null) allHoldings else allHoldings.filter { it.portfolioId == selected.id }
     val summary = Valuation.summary(holdings, quotes, settings)
@@ -122,6 +132,10 @@ fun PortfolioScreen(vm: AppViewModel) {
                 )
             }
 
+            if (holdings.isNotEmpty()) {
+                item { PerformanceCard(vm, holdings, settings, quotes) }
+            }
+
             if (selected == null && multi) {
                 item { Text("Portfolios", style = MaterialTheme.typography.titleMedium) }
                 items(portfolios, key = { "p-" + it.id }) { p ->
@@ -140,10 +154,29 @@ fun PortfolioScreen(vm: AppViewModel) {
                     )
                 }
             } else {
-                item { Text(if (selected == null && multi) "Alle Positionen" else "Positionen", style = MaterialTheme.typography.titleMedium) }
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (selected == null && multi) "Alle Positionen" else "Positionen",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box {
+                            TextButton(onClick = { sortMenu = true }) { Text("Sortieren: ${settings.sort.label} ▾") }
+                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                SortMode.entries.forEach { m ->
+                                    DropdownMenuItem(
+                                        text = { Text((if (m == settings.sort) "✓ " else "") + m.label) },
+                                        onClick = { vm.updateSettings { it.copy(sort = m) }; sortMenu = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            items(holdings.sortedWith(compareBy<Holding>({ it.metal.ordinal }, { -it.purchaseEpochDay })), key = { it.id }) { h ->
+            items(sortHoldings(holdings, settings, quotes), key = { it.id }) { h ->
                 HoldingCard(
                     vm, h, quotes, settings,
                     portfolioName = if (selected == null && multi) names[h.portfolioId] else null,
@@ -214,6 +247,20 @@ fun PortfolioScreen(vm: AppViewModel) {
             },
             dismissButton = { TextButton(onClick = { deletingPortfolio = null }) { Text("Abbrechen") } }
         )
+    }
+}
+
+/** Sortiert Positionen nach der gewählten Reihenfolge. Gewinn/Verlust = Betrag, Wert = aktueller Gesamtwert der Position. */
+private fun sortHoldings(list: List<Holding>, s: Settings, quotes: Map<Metal, Quote>): List<Holding> {
+    fun value(h: Holding) = Valuation.value(h, quotes, s) ?: 0.0
+    fun profit(h: Holding) = value(h) - Valuation.costEur(h)
+    return when (s.sort) {
+        SortMode.PROFIT_DESC -> list.sortedByDescending { profit(it) }
+        SortMode.LOSS_DESC -> list.sortedBy { profit(it) }
+        SortMode.VALUE_DESC -> list.sortedByDescending { value(it) }
+        SortMode.VALUE_ASC -> list.sortedBy { value(it) }
+        SortMode.DATE_DESC -> list.sortedByDescending { it.purchaseEpochDay }
+        SortMode.DATE_ASC -> list.sortedBy { it.purchaseEpochDay }
     }
 }
 
@@ -350,20 +397,91 @@ private fun SummaryCard(
             val metals = holdings.map { it.metal }.distinct().sortedBy { it.ordinal }
             if (metals.isNotEmpty()) {
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                metals.forEach { m ->
-                    val list = holdings.filter { it.metal == m }
-                    val grams = list.sumOf { it.totalFineGrams }
-                    val value = Valuation.pricePerGram(m, quotes, settings)?.let { it * grams }
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        Text(m.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            Fmt.gramsTotal(grams, hide),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 12.dp)
-                        )
-                        Text(value?.let { Fmt.eur(it, hide) } ?: "–", style = MaterialTheme.typography.bodyMedium)
+                Text("Verteilung nach Metall", style = MaterialTheme.typography.labelLarge)
+                val rows = metals.map { m ->
+                    val grams = holdings.filter { it.metal == m }.sumOf { it.totalFineGrams }
+                    Triple(m, grams, Valuation.pricePerGram(m, quotes, settings)?.let { it * grams } ?: 0.0)
+                }
+                val total = rows.sumOf { it.third }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DonutChart(rows.map { metalColor(it.first) to it.third }, 104.dp)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        rows.forEach { (m, grams, value) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("●", color = metalColor(m), modifier = Modifier.padding(end = 6.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "${m.label}  ${if (total > 0) Fmt.num(value / total * 100, 1) + " %" else "–"}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        "${Fmt.gramsTotal(grams, hide)} · ${Fmt.eur(value, hide)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Wertentwicklung des gewählten Portfolios mit Einkaufswert als gestrichelte Linie. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PerformanceCard(vm: AppViewModel, holdings: List<Holding>, settings: Settings, quotes: Map<Metal, Quote>) {
+    val ranges = listOf(ChartRange.M1, ChartRange.M3, ChartRange.M6, ChartRange.Y1, ChartRange.Y5, ChartRange.MAX)
+    var range by rememberSaveable { mutableStateOf(ChartRange.MAX) }
+    var selected by remember { mutableStateOf<PricePoint?>(null) }
+    val fx by vm.fx.collectAsState()
+    val today = System.currentTimeMillis() / 86_400_000L
+    val series = remember(holdings, settings.currency, settings.valueMode, settings.buybackDiscountPct, quotes, fx, range) {
+        vm.repo.portfolioSeries(holdings, settings, range.seconds?.let { today - it / 86_400L })
+    }
+    val (values, costs) = series
+    val hide = settings.discreet
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Wertentwicklung", style = MaterialTheme.typography.titleMedium)
+            val sel = selected
+            if (sel != null) {
+                val cost = costs.minByOrNull { kotlin.math.abs(it.t - sel.t) }?.p
+                Text(
+                    "${Fmt.dateOfSec(sel.t)} · Wert ${Fmt.money(sel.p, hide)}" + (cost?.let { " · Einkauf ${Fmt.money(it, hide)}" } ?: ""),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (values.size >= 2) {
+                val diff = values.last().p - values.first().p
+                Text(
+                    "${Fmt.signedMoney(diff, hide)} im Zeitraum",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (diff >= 0) Gain else Loss
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            PriceChart(
+                points = if (hide) emptyList() else values,
+                lineColor = MaterialTheme.colorScheme.primary,
+                selected = selected,
+                onSelect = { selected = it },
+                secondary = if (hide) null else costs,
+                secondaryColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                emptyText = if (hide) "Im Diskret-Modus ausgeblendet." else "Noch keine Daten für diesen Zeitraum.",
+                modifier = Modifier.fillMaxWidth().height(170.dp)
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                Text("━ Wert", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Text("┅ Einkaufswert", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ranges.forEach { r ->
+                    FilterChip(selected = r == range, onClick = { range = r; selected = null }, label = { Text(r.label) })
                 }
             }
         }
@@ -400,13 +518,14 @@ private fun HoldingCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "Wert ${value?.let { Fmt.eur(it, hide) } ?: "–"}  ·  Kauf ${Fmt.eur(h.purchaseTotal, hide)}",
+                    "Wert ${value?.let { Fmt.eur(it, hide) } ?: "–"}  ·  Kauf ${Fmt.money(h.purchaseTotal, hide, h.currency)}",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 4.dp)
                 )
                 if (value != null) {
-                    val diff = value - h.purchaseTotal
-                    val pct = if (h.purchaseTotal > 0) "  (${Fmt.pct(diff / h.purchaseTotal * 100)})" else ""
+                    val cost = Valuation.costEur(h)
+                    val diff = value - cost
+                    val pct = if (cost > 0) "  (${Fmt.pct(diff / cost * 100)})" else ""
                     Text(
                         "${Fmt.signedEur(diff, hide)}$pct",
                         style = MaterialTheme.typography.bodySmall,

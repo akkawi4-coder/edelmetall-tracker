@@ -1,5 +1,7 @@
 package de.akkaoui.edelmetall.util
 
+import de.akkaoui.edelmetall.data.Currency
+import de.akkaoui.edelmetall.data.Fx
 import de.akkaoui.edelmetall.data.GRAMS_PER_OZ
 import java.text.NumberFormat
 import java.time.Instant
@@ -11,17 +13,39 @@ import kotlin.math.abs
 
 object Fmt {
     private val locale: Locale = Locale.GERMANY
-    private val currency: NumberFormat = NumberFormat.getCurrencyInstance(Locale.GERMANY)
+    private val formats = mutableMapOf<Currency, NumberFormat>()
+
+    private fun fmt(c: Currency): NumberFormat = synchronized(formats) {
+        formats.getOrPut(c) {
+            NumberFormat.getCurrencyInstance(Locale.GERMANY).apply { currency = java.util.Currency.getInstance(c.code) }
+        }
+    }
     private val dateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
     private val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
     private val timeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     const val HIDDEN = "•••••"
 
-    fun eur(v: Double, hidden: Boolean = false): String = if (hidden) "$HIDDEN €" else currency.format(v)
+    private fun sym(c: Currency) = when (c) { Currency.EUR -> "€"; Currency.USD -> "$"; Currency.GBP -> "£"; Currency.CHF -> "CHF" }
 
-    fun signedEur(v: Double, hidden: Boolean = false): String =
-        if (hidden) "$HIDDEN €" else (if (v > 0) "+" else "") + currency.format(v)
+    /** Betrag in EUR → in der Anzeigewährung (aktueller Kurs) */
+    fun eur(v: Double, hidden: Boolean = false): String = money(Fx.fromEur(v), hidden)
+
+    fun signedEur(v: Double, hidden: Boolean = false): String = signedMoney(Fx.fromEur(v), hidden)
+
+    /** Betrag, der schon in der Anzeigewährung vorliegt */
+    fun money(v: Double, hidden: Boolean = false, c: Currency = Fx.display): String =
+        if (hidden) "$HIDDEN ${sym(c)}" else fmt(c).format(v)
+
+    fun signedMoney(v: Double, hidden: Boolean = false, c: Currency = Fx.display): String =
+        if (hidden) "$HIDDEN ${sym(c)}" else (if (v > 0) "+" else "") + fmt(c).format(v)
+
+    /** Kleine Beträge (z. B. Kupfer je Gramm) mit 4 Nachkommastellen */
+    fun moneyPrecise(v: Double, c: Currency = Fx.display): String =
+        if (kotlin.math.abs(v) >= 1.0) fmt(c).format(v)
+        else String.format(locale, "%.4f %s", v, sym(c))
+
+    fun symbol(c: Currency = Fx.display): String = sym(c)
 
     fun pct(v: Double): String = String.format(locale, "%+.2f %%", v)
 

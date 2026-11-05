@@ -25,4 +25,18 @@ object HistoryAssets {
             }
         }
     }.getOrDefault(emptyMap())
+
+    /** EZB-Wechselkurse aus der Historie: Währung → Liste (Epochentag, Kurs je 1 EUR) */
+    fun loadFx(ctx: Context): Map<Currency, List<Pair<Long, Double>>> = runCatching {
+        val txt = ctx.assets.open("history.json").bufferedReader().use { it.readText() }
+        val fx = JSONObject(txt).optJSONObject("fx") ?: return@runCatching emptyMap<Currency, List<Pair<Long, Double>>>()
+        Currency.entries.filter { fx.has(it.code) }.associateWith { c ->
+            val arr = fx.getJSONArray(c.code)
+            (0 until arr.length()).mapNotNull { i ->
+                val e = arr.optJSONArray(i) ?: return@mapNotNull null
+                val r = e.optDouble(1, Double.NaN)
+                if (r.isNaN() || r <= 0) null else e.getLong(0) to r
+            }.sortedBy { it.first }
+        }
+    }.getOrDefault(emptyMap())
 }

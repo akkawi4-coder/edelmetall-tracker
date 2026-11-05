@@ -28,6 +28,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val settings = repo.settings
     val portfolios = repo.portfolios
     val customProducts = repo.customProducts
+    val fx = repo.fx
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading

@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -49,6 +50,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +61,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import de.akkaoui.edelmetall.data.Fx
 import de.akkaoui.edelmetall.data.GRAMS_PER_OZ
 import de.akkaoui.edelmetall.data.Holding
 import de.akkaoui.edelmetall.data.Metal
@@ -77,23 +80,61 @@ fun HoldingEditorDialog(
     defaultPortfolioId: String?,
     onDismiss: () -> Unit,
     onSave: (Holding) -> Unit,
+    prefill: Prefill? = null,
 ) {
-    var product by remember { mutableStateOf(vm.repo.product(initial?.productId)) }
+    var product by remember { mutableStateOf(prefill?.product ?: vm.repo.product(initial?.productId)) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanned by remember { mutableStateOf(prefill) }
+    /** weitere erkannte Rechnungspositionen, die nacheinander geprüft werden */
+    var queue by remember { mutableStateOf<List<Prefill>>(emptyList()) }
+    var step by remember { mutableStateOf(0) }
     val picking = initial == null && product == null
+
+    if (scanning) {
+        ScanDialog(
+            vm = vm,
+            onDismiss = { scanning = false },
+            onResult = { list ->
+                if (list.isNotEmpty()) {
+                    scanned = list.first()
+                    product = list.first().product
+                    queue = list.drop(1)
+                    step++
+                }
+                scanning = false
+            }
+        )
+        return
+    }
 
     FullScreen(onDismiss) {
         if (picking) {
-            ProductPicker(vm, onPick = { product = it }, onCancel = onDismiss)
+            ProductPicker(vm, onPick = { product = it }, onCancel = onDismiss, onScan = { scanning = true })
         } else {
+            key(step) {
             HoldingForm(
                 vm = vm,
                 initial = initial,
                 product = product,
+                prefill = scanned,
+                remaining = queue.size,
                 defaultPortfolioId = defaultPortfolioId,
-                onBack = if (initial == null) ({ product = null }) else null,
+                onBack = if (initial == null) ({ product = null; scanned = null; queue = emptyList() }) else null,
                 onCancel = onDismiss,
-                onSave = onSave
+                onSave = { h ->
+                    if (queue.isEmpty()) onSave(h)
+                    else {
+                        // nächste erkannte Rechnungsposition anzeigen
+                        vm.saveHolding(h)
+                        val next = queue.first()
+                        queue = queue.drop(1)
+                        scanned = next
+                        product = next.product
+                        step++
+                    }
+                }
             )
+            }
         }
     }
 }
@@ -109,7 +150,7 @@ private fun FullScreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProductPicker(vm: AppViewModel, onPick: (Product) -> Unit, onCancel: () -> Unit) {
+private fun ProductPicker(vm: AppViewModel, onPick: (Product) -> Unit, onCancel: () -> Unit, onScan: () -> Unit) {
     val customs by vm.customProducts.collectAsState()
     var query by remember { mutableStateOf("") }
     var metalFilter by remember { mutableStateOf<Metal?>(null) }
@@ -141,6 +182,14 @@ private fun ProductPicker(vm: AppViewModel, onPick: (Product) -> Unit, onCancel:
         }
         LazyColumn(Modifier.weight(1f).imePadding()) {
             item {
+                ListItem(
+                    headlineContent = { Text("Per Foto erkennen") },
+                    supportingContent = { Text("Barren, Münze oder Rechnung fotografieren – die Daten werden vorausgefüllt.") },
+                    leadingContent = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
+                    modifier = Modifier.clickable { onScan() }
+                )
+                HorizontalDivider()
                 ListItem(
                     headlineContent = { Text("Eigenes Produkt anlegen") },
                     supportingContent = { Text("Nicht in der Liste? Einmal anlegen – danach steht es hier zur Auswahl.") },
@@ -351,15 +400,21 @@ private fun HoldingForm(
     vm: AppViewModel,
     initial: Holding?,
     product: Product?,
+    prefill: Prefill?,
+    remaining: Int,
     defaultPortfolioId: String?,
     onBack: (() -> Unit)?,
     onCancel: () -> Unit,
     onSave: (Holding) -> Unit,
 ) {
     val portfolios by vm.portfolios.collectAsState()
+    val quotes by vm.quotes.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val currency = initial?.currency ?: settings.currency
     val defaultName = when {
         initial != null -> initial.name
-        product != null -> if (product.form == ProductForm.BAR && product.manufacturer.isNotBlank() && !product.custom)
+        product != null -> if (product.form == ProductForm.BAR && product.manufacturer.isNotBlank() && !product.custom &&
+            !product.manufacturer.startsWith("Verschiedene"))
             "${product.manufacturer} ${product.name}" else product.name
         else -> ""
     }
@@ -372,10 +427,10 @@ private fun HoldingForm(
     var fineText by remember {
         mutableStateOf(initial?.fineGramsPerUnit?.let { Fmt.input(it) } ?: product?.fineGrams?.let { Fmt.input(it) } ?: "")
     }
-    var qtyText by remember { mutableStateOf(initial?.quantity?.let { Fmt.input(it) } ?: "1") }
-    var priceText by remember { mutableStateOf(initial?.purchaseTotal?.let { Fmt.input(it) } ?: "") }
-    var day by remember { mutableLongStateOf(initial?.purchaseEpochDay ?: LocalDate.now().toEpochDay()) }
-    var note by remember { mutableStateOf(initial?.note ?: "") }
+    var qtyText by remember { mutableStateOf(initial?.quantity?.let { Fmt.input(it) } ?: prefill?.quantity?.let { Fmt.input(it) } ?: "1") }
+    var priceText by remember { mutableStateOf(initial?.purchaseTotal?.let { Fmt.input(it) } ?: prefill?.total?.let { Fmt.input(it) } ?: "") }
+    var day by remember { mutableLongStateOf(initial?.purchaseEpochDay ?: prefill?.epochDay ?: LocalDate.now().toEpochDay()) }
+    var note by remember { mutableStateOf(initial?.note ?: prefill?.note ?: "") }
     var showDate by remember { mutableStateOf(false) }
 
     val fromCatalog = product != null
@@ -397,6 +452,13 @@ private fun HoldingForm(
             else TextButton(onClick = onCancel) { Text("Abbrechen") }
             Spacer(Modifier.width(8.dp))
             Text(if (initial == null) "Position anlegen" else "Position bearbeiten", style = MaterialTheme.typography.titleLarge)
+        }
+        if (prefill != null) {
+            Text(
+                "Per Foto erkannt – bitte prüfen." + if (remaining > 0) " Danach folgen noch $remaining weitere Position(en)." else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
 
         if (product != null) {
@@ -462,14 +524,34 @@ private fun HoldingForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth()
         )
+        // Vorschlag: aktueller reiner Metallwert (Spot) in der Währung der Position
+        val metalNow = product?.metal ?: metal
+        val suggestion = if (qty != null && qty > 0 && fine != null && fine > 0) {
+            quotes[metalNow]?.let { Fx.fromEur(it.pricePerOz / GRAMS_PER_OZ * fine * qty, currency) }
+        } else null
+        val placeholder: (@Composable () -> Unit)? = if (suggestion != null) {
+            { Text("Vorschlag: ${Fmt.money(suggestion, c = currency)}") }
+        } else null
         OutlinedTextField(
             value = priceText, onValueChange = { priceText = it },
-            label = { Text("Kaufpreis gesamt in €") },
-            supportingText = { Text("Für alle Stücke zusammen, inkl. Versand/Aufgeld") },
+            label = { Text("Kaufpreis gesamt in ${currency.code}") },
+            placeholder = placeholder,
+            supportingText = {
+                Text(
+                    if (suggestion != null && priceText.isBlank()) "Vorschlag = reiner Metallwert, Händlerpreis meist höher"
+                    else "Für alle Stücke zusammen, inkl. Versand/Aufgeld"
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth()
         )
+        if (suggestion != null && priceText.isBlank()) {
+            AssistChip(
+                onClick = { priceText = Fmt.input(Math.round(suggestion * 100) / 100.0) },
+                label = { Text("Vorschlag übernehmen: ${Fmt.money(suggestion, c = currency)}") }
+            )
+        }
         OutlinedButton(onClick = { showDate = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Kaufdatum: ${Fmt.date(day)}")
         }
@@ -504,6 +586,7 @@ private fun HoldingForm(
                         purchaseTotal = price ?: 0.0,
                         purchaseEpochDay = day,
                         note = note.trim(),
+                        currency = currency,
                     )
                 )
             },

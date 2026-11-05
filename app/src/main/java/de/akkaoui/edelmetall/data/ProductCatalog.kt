@@ -137,6 +137,11 @@ object ProductCatalog {
         coin(Metal.PALLADIUM, "Maple Leaf 1 Unze Palladium", "Kanada (Royal Canadian Mint)", OZ, "999,5")
         coin(Metal.PALLADIUM, "Britannia 1 Unze Palladium", "Großbritannien (Royal Mint)", OZ, "999,5")
 
+        // ---------- Kupfer ----------
+        bars(Metal.COPPER, "Kupferbarren", listOf("Verschiedene Hersteller"), listOf(OZ, 100.0, 250.0, 500.0, 1000.0, 5000.0), "999,9")
+        coin(Metal.COPPER, "Kupfermünze 1 Unze", "Verschiedene Hersteller", OZ, "999,0")
+        coin(Metal.COPPER, "Kupfermünze 5 Unzen", "Verschiedene Hersteller", 5 * OZ, "999,0")
+
         return l
     }
 }

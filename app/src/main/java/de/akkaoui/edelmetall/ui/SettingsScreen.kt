@@ -3,6 +3,7 @@ package de.akkaoui.edelmetall.ui
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import de.akkaoui.edelmetall.BuildConfig
+import de.akkaoui.edelmetall.data.Currency
 import de.akkaoui.edelmetall.data.ThemeMode
 import de.akkaoui.edelmetall.data.ValueMode
 import de.akkaoui.edelmetall.util.Fmt
@@ -84,6 +86,28 @@ fun SettingsScreen(vm: AppViewModel) {
                     )
                 }
             }
+        }
+
+        Section("Währung") {
+            Text(
+                "Gilt für die ganze App: Kurse, Charts und Portfolio. Kaufpreise bleiben in der Währung gespeichert, " +
+                    "in der du sie eingegeben hast, und werden zum aktuellen Kurs umgerechnet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Currency.entries.forEach { c ->
+                    FilterChip(
+                        selected = settings.currency == c,
+                        onClick = {
+                            vm.updateSettings { it.copy(currency = c) }
+                            vm.refreshNow()
+                        },
+                        label = { Text(c.code) }
+                    )
+                }
+            }
+            Text(settings.currency.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         Section("Sicherheit") {
@@ -145,6 +169,8 @@ fun SettingsScreen(vm: AppViewModel) {
                 "• Kein Konto, keine Anmeldung, keine Werbung, keine Tracker.\n" +
                     "• Portfolios, eigene Produkte und Einstellungen werden verschlüsselt nur auf diesem Gerät gespeichert. Eigene Fotos liegen im privaten App-Speicher.\n" +
                     "• Die App lädt ausschließlich öffentliche Kurse von gold-api.com. Dabei werden keine persönlichen Daten übertragen.\n" +
+                    "• Die Foto-Erkennung läuft komplett auf dem Handy, Fotos verlassen das Gerät nicht.\n" +
+                    "• Foto-Erkennung läuft komplett auf dem Handy, Fotos verlassen das Gerät nicht.\n" +
                     "• Keine Anlage- oder Steuerberatung. Die Haltefrist-Anzeige ist ein Hinweis nach § 23 EStG für Privatpersonen in Deutschland.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

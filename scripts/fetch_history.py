@@ -28,8 +28,11 @@ from datetime import date, datetime, timedelta, timezone
 OUT = sys.argv[1] if len(sys.argv) > 1 else "app/src/main/assets/history.json"
 LOG = sys.argv[2] if len(sys.argv) > 2 else "data/history-log.txt"
 KEY = os.environ.get("GOLDAPI_KEY", "").strip()
-SYMBOLS = ["XAU", "XAG", "XPT", "XPD"]
-YAHOO = {"XAU": "GC=F", "XAG": "SI=F", "XPT": "PL=F", "XPD": "PA=F"}
+SYMBOLS = ["XAU", "XAG", "XPT", "XPD", "HG"]
+YAHOO = {"XAU": "GC=F", "XAG": "SI=F", "XPT": "PL=F", "XPD": "PA=F", "HG": "HG=F"}
+# Kupfer wird in USD je Pfund (lb) gehandelt – die App rechnet intern alles je Feinunze.
+PER_OZ_FACTOR = {"HG": 31.1034768 / 453.59237}
+FX_CURRENCIES = ["USD", "CHF", "GBP"]
 EURO_START = date(1999, 1, 4)
 UA = "Mozilla/5.0 (X11; Linux x86_64) EdelmetallTracker-Build/0.2"
 EPOCH = date(1970, 1, 1)
@@ -56,8 +59,8 @@ def ts(d):
 
 # ------------------------------------------------------------------ Wechselkurse
 
-def ecb_usd_per_eur():
-    url = ("https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
+def ecb_usd_per_eur(cur="USD"):
+    url = (f"https://data-api.ecb.europa.eu/service/data/EXR/D.{cur}.EUR.SP00.A"
            "?format=csvdata&startPeriod=1999-01-01")
     rates = {}
     text = http(url, {"Accept": "text/csv"})
@@ -227,9 +230,11 @@ def main():
     for sym in SYMBOLS:
         series = {}
         attempts = []
-        if KEY:
+        if KEY and sym != "HG":
             attempts.append(("gold-api.com", lambda s=sym: from_goldapi(s, EURO_START, today + timedelta(days=1))))
-        attempts += [("Stooq", lambda s=sym: from_stooq(s)), ("Yahoo", lambda s=sym: from_yahoo(s))]
+        if sym != "HG":
+            attempts.append(("Stooq", lambda s=sym: from_stooq(s)))
+        attempts.append(("Yahoo", lambda s=sym: from_yahoo(s)))
         for name, fn in attempts:
             try:
                 part = fn()
@@ -256,7 +261,8 @@ def main():
 
         series = {d: p for d, p in series.items() if d >= EURO_START}
         series = thin(series, today)
-        result[sym] = [[(d - EPOCH).days, round(p / usd_per_eur(d), 2)] for d, p in series.items()]
+        f = PER_OZ_FACTOR.get(sym, 1.0)
+        result[sym] = [[(d - EPOCH).days, round(p * f / usd_per_eur(d), 4 if f != 1.0 else 2)] for d, p in series.items()]
         log(f"  {sym}: {len(result[sym])} Punkte in EUR")
 
     if not any(result.values()):
@@ -275,10 +281,27 @@ def main():
     except Exception:  # noqa: BLE001
         pass
 
+    # Wechselkurse für die Währungsumrechnung in der App (Einheiten Fremdwährung je 1 EUR)
+    fx = {}
+    for cur in FX_CURRENCIES:
+        try:
+            r = rates if cur == "USD" else ecb_usd_per_eur(cur)
+            fx[cur] = [[(d - EPOCH).days, round(v, 5)] for d, v in thin(r, today).items()]
+            log(f"  Wechselkurs {cur}: {len(fx[cur])} Werte")
+        except Exception as e:  # noqa: BLE001
+            log(f"  Wechselkurs {cur} fehlgeschlagen: {e}")
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            old_fx = json.load(f).get("fx", {})
+        for cur, v in old_fx.items():
+            fx.setdefault(cur, v)
+    except Exception:  # noqa: BLE001
+        pass
+
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"generated": today.isoformat(), "currency": "EUR", "unit": "oz",
-                   "sources": sources, "metals": result}, f, separators=(",", ":"))
+                   "sources": sources, "metals": result, "fx": fx}, f, separators=(",", ":"))
     log(f"Geschrieben: {OUT} ({sum(len(v) for v in result.values())} Werte)")
     write_log()
     return 0

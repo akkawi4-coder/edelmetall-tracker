@@ -34,7 +34,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.akkaoui.edelmetall.data.ChartRange
+import de.akkaoui.edelmetall.data.Fx
 import de.akkaoui.edelmetall.data.GRAMS_PER_OZ
+import de.akkaoui.edelmetall.data.WeightUnit
 import de.akkaoui.edelmetall.data.Metal
 import de.akkaoui.edelmetall.data.PricePoint
 import de.akkaoui.edelmetall.ui.components.PriceChart
@@ -55,9 +57,18 @@ fun PricesScreen(vm: AppViewModel) {
     var range by rememberSaveable { mutableStateOf(ChartRange.D1) }
     var selected by remember { mutableStateOf<PricePoint?>(null) }
 
-    val points = remember(metal, range, recorded) { vm.repo.series(metal, range) }
+    val settings by vm.settings.collectAsState()
+    val fx by vm.fx.collectAsState()
+    val unit = settings.unit
+    val cur = settings.currency
+    // Kurse intern in EUR je Unze → Anzeige in gewählter Währung (historischer Kurs) und Einheit
+    val points = remember(metal, range, recorded, cur, unit, fx) {
+        val f = unit.grams / GRAMS_PER_OZ
+        vm.repo.series(metal, range).map { PricePoint(it.t, it.p * f * Fx.rateAt(cur, it.t / 86_400L)) }
+    }
     val quote = quotes[metal]
-    val current = quote?.pricePerOz ?: points.lastOrNull()?.p
+    val toUnit = { eurPerOz: Double -> Fx.fromEur(eurPerOz) * unit.grams / GRAMS_PER_OZ }
+    val current = quote?.pricePerOz?.let(toUnit) ?: points.lastOrNull()?.p
     val base = points.firstOrNull()?.p
     val shown = selected?.p ?: current
     val color = metalColor(metal)
@@ -92,18 +103,19 @@ fun PricesScreen(vm: AppViewModel) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        if (selected != null) "${metal.label} · ${labelFor(selected!!.t, range)}" else "${metal.label} · Spotpreis je Unze",
+                        if (selected != null) "${metal.label} · ${labelFor(selected!!.t, range)}" else "${metal.label} · Spotpreis je ${unitName(unit)}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        shown?.let { Fmt.eur(it) } ?: "–",
+                        shown?.let { Fmt.moneyPrecise(it) } ?: "–",
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (shown != null) {
                         Text(
-                            "${Fmt.eur(shown / GRAMS_PER_OZ)} je Gramm",
+                            if (unit == WeightUnit.G) "${Fmt.moneyPrecise(shown * 1000)} je Kilogramm"
+                            else "${Fmt.moneyPrecise(shown / unit.grams)} je Gramm",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -112,7 +124,7 @@ fun PricesScreen(vm: AppViewModel) {
                         val diff = shown - base
                         val pct = diff / base * 100
                         Text(
-                            "${Fmt.signedEur(diff)}  (${Fmt.pct(pct)})  · ${range.label}",
+                            "${Fmt.signedMoney(diff)}  (${Fmt.pct(pct)})  · ${range.label}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (diff >= 0) Gain else Loss,
                             modifier = Modifier.padding(top = 4.dp)
@@ -133,13 +145,23 @@ fun PricesScreen(vm: AppViewModel) {
                             Text(labelFor(points.last().t, range), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(
-                            "Tief ${Fmt.eur(points.minOf { it.p })}  ·  Hoch ${Fmt.eur(points.maxOf { it.p })}",
+                            "Tief ${Fmt.moneyPrecise(points.minOf { it.p })}  ·  Hoch ${Fmt.moneyPrecise(points.maxOf { it.p })}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                     Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Einheit", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        WeightUnit.entries.forEach { u ->
+                            FilterChip(
+                                selected = u == unit,
+                                onClick = { vm.updateSettings { it.copy(unit = u) }; selected = null },
+                                label = { Text(u.label) }
+                            )
+                        }
+                    }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ChartRange.entries.forEach { r ->
                             FilterChip(
@@ -169,9 +191,12 @@ fun PricesScreen(vm: AppViewModel) {
                     Spacer(Modifier.width(10.dp))
                     Text(m.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(q?.let { Fmt.eur(it.pricePerOz) } ?: "–", style = MaterialTheme.typography.titleMedium)
+                        Text(q?.let { "${Fmt.moneyPrecise(toUnit(it.pricePerOz))} / ${unit.label}" } ?: "–", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            q?.let { "${Fmt.eur(it.pricePerOz / GRAMS_PER_OZ)} / g" } ?: "",
+                            q?.let {
+                                val perG = Fx.fromEur(it.pricePerOz) / GRAMS_PER_OZ
+                                if (unit == WeightUnit.G) "${Fmt.moneyPrecise(perG * 1000)} / kg" else "${Fmt.moneyPrecise(perG)} / g"
+                            } ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -190,13 +215,20 @@ fun PricesScreen(vm: AppViewModel) {
                 val updated = quotes.values.maxOfOrNull { it.updatedAt }
                 Text(
                     (if (updated != null) "Stand: ${Fmt.dateTime(updated)} · " else "") +
-                        "Spotpreise in EUR je Feinunze, Quelle: gold-api.com. Händlerpreise liegen meist darüber.",
+                        "Spotpreise in ${cur.code}, Quelle: gold-api.com, Historie: Yahoo Finance/Stooq, Umrechnung mit EZB-Kursen. " +
+                            "Kupfer wird je Pfund gehandelt und hier umgerechnet. Händlerpreise liegen meist darüber.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
     }
+}
+
+private fun unitName(u: WeightUnit) = when (u) {
+    WeightUnit.G -> "Gramm"
+    WeightUnit.OZ -> "Unze"
+    WeightUnit.KG -> "Kilogramm"
 }
 
 private fun labelFor(t: Long, range: ChartRange): String =
